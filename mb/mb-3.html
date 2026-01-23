@@ -40,7 +40,8 @@
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.xr.enabled = true;
+  // WebVR (no renderer.xr in r110)
+  // renderer.xr.enabled is not available in this version
   document.body.appendChild(renderer.domElement);
 
   // Enter VR button
