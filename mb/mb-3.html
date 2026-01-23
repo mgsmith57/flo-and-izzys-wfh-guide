@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Motte and Bailey Castle - Meta Quest VR</title>
+  <title>Motte and Bailey Castle - Meta Quest WebXR</title>
   <style>
     body { margin: 0; overflow: hidden; }
     #overlay {
@@ -19,20 +19,17 @@
 </head>
 <body>
 <div id="overlay">
-  Meta Quest VR Mode<br>
-  Trigger = enter VR<br>
-  Left joystick = move<br>
-  Right joystick = turn
+  Meta Quest WebXR<br>
+  Click Enter VR<br>
+  Left stick = move, Right stick = turn
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.110.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.110.0/examples/js/webxr/WebXR.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.110.0/examples/js/controls/VRControls.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.110.0/examples/js/controls/OrbitControls.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.110.0/examples/js/vr/WebVR.js"></script>
+<!-- Modern WebXR version (required for Quest 2/3) -->
+<script type="module">
+  import * as THREE from 'https://unpkg.com/three@0.161.0/build/three.module.js';
+  import { VRButton } from 'https://unpkg.com/three@0.161.0/examples/jsm/webxr/VRButton.js';
 
-<script>
-  // --- WebXR / VR Setup ---
+  // Scene
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x87ceeb);
 
@@ -40,16 +37,14 @@
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  // WebVR (no renderer.xr in r110)
-  // renderer.xr.enabled is not available in this version
+  renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // Enter VR button
-  const button = THREE.WEBVR.createButton(renderer);
-  document.body.appendChild(button);
+  // VR Button
+  document.body.appendChild(VRButton.createButton(renderer));
 
   // Lighting
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
   scene.add(ambientLight);
 
   const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -67,9 +62,9 @@
   const player = new THREE.Group();
   player.add(camera);
   scene.add(player);
-  player.position.set(0, 1.6, 200); // standing height
+  player.position.set(0, 1.6, 200);
 
-  // --- Build the Motte and Bailey (same as before) ---
+  // --- Build the Motte and Bailey ---
 
   // Motte
   const motteGeo = new THREE.CylinderGeometry(50, 80, 40, 32);
@@ -173,7 +168,7 @@
 
     const t = i / 19;
     plank.position.set(
-            THREE.Math.lerp(-120, 120, t),
+            THREE.MathUtils.lerp(-120, 120, t),
             25 - t * 15,
             0
     );
@@ -181,23 +176,20 @@
   }
   scene.add(bridgeGroup);
 
-  // --- VR Locomotion (thumbstick movement) ---
-  const clock = new THREE.Clock();
-
+  // --- VR Locomotion ---
   function handleControllers() {
     const session = renderer.xr.getSession();
     if (!session) return;
 
     for (const source of session.inputSources) {
-      if (!source.gamepad) continue;
+      if (!source.gamepad || source.handedness !== 'left') continue;
 
       const axes = source.gamepad.axes;
 
-      // Left thumbstick movement
-      const forward = axes[3] || 0;
-      const strafe = axes[2] || 0;
+      const strafe = axes[0] || 0;
+      const forward = axes[1] || 0;
 
-      const speed = 2.5;
+      const speed = 0.05;
 
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
