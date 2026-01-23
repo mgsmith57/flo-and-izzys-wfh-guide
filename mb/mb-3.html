@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Motte and Bailey Castle - Meta Quest VR</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      padding: 10px;
+      font-family: sans-serif;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+<div id="overlay">
+  Meta Quest VR Mode<br>
+  Trigger = enter VR<br>
+  Left joystick = move<br>
+  Right joystick = turn
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.110.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.110.0/examples/js/webxr/WebXR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.110.0/examples/js/controls/VRControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.110.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.110.0/examples/js/vr/WebVR.js"></script>
+
+<script>
+  // --- WebXR / VR Setup ---
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87ceeb);
+
+  const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.xr.enabled = true;
+  document.body.appendChild(renderer.domElement);
+
+  // Enter VR button
+  const button = THREE.WEBVR.createButton(renderer);
+  document.body.appendChild(button);
+
+  // Lighting
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+  scene.add(ambientLight);
+
+  const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  sunLight.position.set(100, 200, 100);
+  scene.add(sunLight);
+
+  // Ground
+  const groundGeo = new THREE.PlaneGeometry(800, 800);
+  const groundMat = new THREE.MeshLambertMaterial({ color: 0x3a7d3a });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  scene.add(ground);
+
+  // Player rig
+  const player = new THREE.Group();
+  player.add(camera);
+  scene.add(player);
+  player.position.set(0, 1.6, 200); // standing height
+
+  // --- Build the Motte and Bailey (same as before) ---
+
+  // Motte
+  const motteGeo = new THREE.CylinderGeometry(50, 80, 40, 32);
+  const motteMat = new THREE.MeshLambertMaterial({ color: 0x8b6b3e });
+  const motte = new THREE.Mesh(motteGeo, motteMat);
+  motte.position.set(-120, 20, 0);
+  scene.add(motte);
+
+  // Keep
+  const keepGeo = new THREE.BoxGeometry(40, 40, 40);
+  const keepMat = new THREE.MeshLambertMaterial({ color: 0x9e9e9e });
+  const keep = new THREE.Mesh(keepGeo, keepMat);
+  keep.position.set(-120, 60, 0);
+  scene.add(keep);
+
+  // Crenellations on keep
+  for (let i = -15; i <= 15; i += 6) {
+    const crenelGeo = new THREE.BoxGeometry(4, 6, 4);
+    const crenelMat = new THREE.MeshLambertMaterial({ color: 0xb0b0b0 });
+
+    const c1 = new THREE.Mesh(crenelGeo, crenelMat);
+    c1.position.set(-120 + i, 83, -20);
+    scene.add(c1);
+
+    const c2 = new THREE.Mesh(crenelGeo, crenelMat);
+    c2.position.set(-120 + i, 83, 20);
+    scene.add(c2);
+  }
+
+  // Bailey floor
+  const baileyFloorGeo = new THREE.CircleGeometry(90, 40);
+  const baileyFloorMat = new THREE.MeshLambertMaterial({ color: 0x4c8a4c });
+  const baileyFloor = new THREE.Mesh(baileyFloorGeo, baileyFloorMat);
+  baileyFloor.rotation.x = -Math.PI / 2;
+  baileyFloor.position.set(120, 0.1, 0);
+  scene.add(baileyFloor);
+
+  // Palisade wall
+  function createWall(radius, height, segments) {
+    const group = new THREE.Group();
+    for (let i = 0; i < segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      const postGeo = new THREE.BoxGeometry(3, height, 6);
+      const postMat = new THREE.MeshLambertMaterial({ color: 0x6b4423 });
+      const post = new THREE.Mesh(postGeo, postMat);
+
+      post.position.set(
+              120 + Math.cos(angle) * radius,
+              height / 2,
+              Math.sin(angle) * radius
+      );
+      post.rotation.y = -angle;
+      group.add(post);
+    }
+    return group;
+  }
+
+  const baileyWall = createWall(90, 15, 100);
+  scene.add(baileyWall);
+
+  // Towers
+  function createTower(x, z) {
+    const towerGeo = new THREE.CylinderGeometry(10, 12, 30, 16);
+    const towerMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
+    const tower = new THREE.Mesh(towerGeo, towerMat);
+    tower.position.set(x, 15, z);
+    scene.add(tower);
+
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      const crenelGeo = new THREE.BoxGeometry(3, 5, 3);
+      const crenelMat = new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
+      const crenel = new THREE.Mesh(crenelGeo, crenelMat);
+
+      crenel.position.set(
+              x + Math.cos(angle) * 10,
+              32,
+              z + Math.sin(angle) * 10
+      );
+      scene.add(crenel);
+    }
+  }
+
+  createTower(210, 0);
+  createTower(120, 90);
+  createTower(120, -90);
+
+  // Gate
+  const gateGeo = new THREE.BoxGeometry(14, 15, 6);
+  const gateMat = new THREE.MeshLambertMaterial({ color: 0x4a2a12 });
+  const gate = new THREE.Mesh(gateGeo, gateMat);
+  gate.position.set(120, 7.5, 90);
+  scene.add(gate);
+
+  // Wooden bridge
+  const bridgeGroup = new THREE.Group();
+  for (let i = 0; i < 20; i++) {
+    const plankGeo = new THREE.BoxGeometry(8, 1, 4);
+    const plankMat = new THREE.MeshLambertMaterial({ color: 0x7b5233 });
+    const plank = new THREE.Mesh(plankGeo, plankMat);
+
+    const t = i / 19;
+    plank.position.set(
+            THREE.Math.lerp(-120, 120, t),
+            25 - t * 15,
+            0
+    );
+    bridgeGroup.add(plank);
+  }
+  scene.add(bridgeGroup);
+
+  // --- VR Locomotion (thumbstick movement) ---
+  const clock = new THREE.Clock();
+
+  function handleControllers() {
+    const session = renderer.xr.getSession();
+    if (!session) return;
+
+    for (const source of session.inputSources) {
+      if (!source.gamepad) continue;
+
+      const axes = source.gamepad.axes;
+
+      // Left thumbstick movement
+      const forward = axes[3] || 0;
+      const strafe = axes[2] || 0;
+
+      const speed = 2.5;
+
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      dir.y = 0;
+      dir.normalize();
+
+      const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0));
+
+      player.position.addScaledVector(dir, -forward * speed);
+      player.position.addScaledVector(right, strafe * speed);
+    }
+  }
+
+  // Resize
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Render loop
+  renderer.setAnimationLoop(() => {
+    handleControllers();
+    renderer.render(scene, camera);
+  });
+</script>
+</body>
+</html>

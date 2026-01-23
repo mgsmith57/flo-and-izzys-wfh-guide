@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Motte and Bailey Castle - Three.js Walkthrough</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #instructions {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      padding: 10px;
+      font-family: sans-serif;
+      z-index: 1;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div id="instructions">Click to lock pointer. WASD to move, Mouse to look.</div>
+
+<!-- Classic (non-module) Three.js build that works from file:// -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.110.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.110.0/examples/js/controls/PointerLockControls.js"></script>
+
+<script>
+  // Basic scene setup
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87ceeb);
+
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  // Lighting
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambientLight);
+
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+  dirLight.position.set(50, 100, 50);
+  scene.add(dirLight);
+
+  // Ground
+  const groundGeo = new THREE.PlaneGeometry(500, 500);
+  const groundMat = new THREE.MeshLambertMaterial({ color: 0x3a7d3a });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  scene.add(ground);
+
+  // Controls (Pointer Lock)
+  const controls = new THREE.PointerLockControls(camera, document.body);
+
+  const instructions = document.getElementById('instructions');
+  instructions.addEventListener('click', () => {
+    controls.lock();
+  });
+
+  scene.add(controls.getObject());
+
+  let moveForward = false;
+  let moveBackward = false;
+  let moveLeft = false;
+  let moveRight = false;
+
+  const velocity = new THREE.Vector3();
+  const direction = new THREE.Vector3();
+
+  function onKeyDown(event) {
+    switch (event.code) {
+      case 'KeyW':
+      case 'ArrowUp': moveForward = true; break;
+      case 'KeyA':
+      case 'ArrowLeft': moveLeft = true; break;
+      case 'KeyS':
+      case 'ArrowDown': moveBackward = true; break;
+      case 'KeyD':
+      case 'ArrowRight': moveRight = true; break;
+    }
+  }
+
+  function onKeyUp(event) {
+    switch (event.code) {
+      case 'KeyW':
+      case 'ArrowUp': moveForward = false; break;
+      case 'KeyA':
+      case 'ArrowLeft': moveLeft = false; break;
+      case 'KeyS':
+      case 'ArrowDown': moveBackward = false; break;
+      case 'KeyD':
+      case 'ArrowRight': moveRight = false; break;
+    }
+  }
+
+  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keyup', onKeyUp);
+
+  // --- Build the Motte and Bailey ---
+
+  // Motte (hill)
+  const motteGeo = new THREE.CylinderGeometry(40, 60, 30, 32);
+  const motteMat = new THREE.MeshLambertMaterial({ color: 0x8b6b3e });
+  const motte = new THREE.Mesh(motteGeo, motteMat);
+  motte.position.set(-60, 15, 0);
+  scene.add(motte);
+
+  // Keep on top of motte
+  const keepGeo = new THREE.BoxGeometry(25, 30, 25);
+  const keepMat = new THREE.MeshLambertMaterial({ color: 0xb0b0b0 });
+  const keep = new THREE.Mesh(keepGeo, keepMat);
+  keep.position.set(-60, 40, 0);
+  scene.add(keep);
+
+  // Bailey floor
+  const baileyFloorGeo = new THREE.CircleGeometry(60, 32);
+  const baileyFloorMat = new THREE.MeshLambertMaterial({ color: 0x4c8a4c });
+  const baileyFloor = new THREE.Mesh(baileyFloorGeo, baileyFloorMat);
+  baileyFloor.rotation.x = -Math.PI / 2;
+  baileyFloor.position.set(60, 0.1, 0);
+  scene.add(baileyFloor);
+
+  // Palisade wall
+  function createWall(radius, height, segments) {
+    const group = new THREE.Group();
+    for (let i = 0; i < segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      const postGeo = new THREE.BoxGeometry(2, height, 4);
+      const postMat = new THREE.MeshLambertMaterial({ color: 0x7a4a2e });
+      const post = new THREE.Mesh(postGeo, postMat);
+
+      post.position.set(
+              60 + Math.cos(angle) * radius,
+              height / 2,
+              Math.sin(angle) * radius
+      );
+      post.rotation.y = -angle;
+      group.add(post);
+    }
+    return group;
+  }
+
+  const baileyWall = createWall(60, 12, 80);
+  scene.add(baileyWall);
+
+  // Gate
+  const gateGeo = new THREE.BoxGeometry(10, 12, 4);
+  const gateMat = new THREE.MeshLambertMaterial({ color: 0x5a3a1e });
+  const gate = new THREE.Mesh(gateGeo, gateMat);
+  gate.position.set(60, 6, 60);
+  scene.add(gate);
+
+  // Ladder up the motte
+  const ladderGeo = new THREE.BoxGeometry(4, 30, 1);
+  const ladderMat = new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
+  const ladder = new THREE.Mesh(ladderGeo, ladderMat);
+  ladder.position.set(-20, 15, 0);
+  scene.add(ladder);
+
+  // Starting position
+  camera.position.set(0, 5, 120);
+
+  // Resize handler
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Animation loop
+  let prevTime = performance.now();
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    const time = performance.now();
+    const delta = (time - prevTime) / 1000;
+
+    velocity.x -= velocity.x * 10.0 * delta;
+    velocity.z -= velocity.z * 10.0 * delta;
+
+    direction.z = Number(moveForward) - Number(moveBackward);
+    direction.x = Number(moveRight) - Number(moveLeft);
+    direction.normalize();
+
+    const speed = 40.0;
+
+    if (moveForward || moveBackward) velocity.z -= direction.z * speed * delta;
+    if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
+
+    controls.moveRight(-velocity.x * delta);
+    controls.moveForward(-velocity.z * delta);
+
+    prevTime = time;
+    renderer.render(scene, camera);
+  }
+
+  animate();
+</script>
+</body>
+</html>
