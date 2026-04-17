@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>GK Angle Trainer · Field Hockey</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0d141c;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100dvh;
+    padding: 12px 14px;
+    gap: 12px;
+    font-family: 'Courier New', Courier, monospace;
+    -webkit-user-select: none;
+    user-select: none;
+    overflow: hidden;
+  }
+  h1 {
+    color: #c8d8e8;
+    font-size: clamp(0.78rem, 2.2vw, 1.05rem);
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  canvas {
+    touch-action: none;
+    display: block;
+    border-radius: 6px;
+    box-shadow: 0 6px 44px rgba(0,0,0,0.8);
+    max-width: 100%;
+  }
+  #stats {
+    display: flex;
+    gap: clamp(10px, 4vw, 36px);
+    align-items: flex-start;
+  }
+  .s { text-align: center; }
+  .sl {
+    color: #334455;
+    text-transform: uppercase;
+    font-size: clamp(0.52rem, 1.3vw, 0.68rem);
+    letter-spacing: 0.12em;
+    margin-bottom: 2px;
+  }
+  .sv {
+    font-weight: 700;
+    font-size: clamp(1rem, 3vw, 1.4rem);
+  }
+  .sr { color: #d94055; }
+  .sb { color: #4a90d9; }
+  .sg { color: #44c882; }
+
+  #hint {
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    transition: opacity 0.7s ease;
+  }
+  #hint span {
+    background: rgba(0,0,0,0.5);
+    color: rgba(200,220,240,0.65);
+    font-family: 'Courier New', monospace;
+    font-size: clamp(0.6rem, 1.5vw, 0.72rem);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 5px 14px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  #hint.fade { opacity: 0; }
+
+  #legend {
+    display: flex;
+    gap: clamp(8px, 2.5vw, 20px);
+    font-size: clamp(0.54rem, 1.3vw, 0.68rem);
+    letter-spacing: 0.1em;
+    color: #445566;
+    text-transform: uppercase;
+    align-items: center;
+  }
+  .lc {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .ldot {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<h1>GK Angle Trainer</h1>
+<canvas id="c"></canvas>
+
+<div id="stats">
+  <div class="s">
+    <div class="sl">Shooting Angle</div>
+    <div class="sv sr" id="va">—</div>
+  </div>
+  <div class="s">
+    <div class="sl">GK Blocks</div>
+    <div class="sv sb" id="vb">—</div>
+  </div>
+  <div class="s">
+    <div class="sl">Open Goal</div>
+    <div class="sv sg" id="vc">—</div>
+  </div>
+</div>
+
+<div id="legend">
+  <span class="lc"><span class="ldot" style="background:rgba(155,28,45,0.88)"></span>Attack angle</span>
+  <span class="lc"><span class="ldot" style="background:rgba(6,14,28,0.84)"></span>GK coverage</span>
+</div>
+
+<div id="hint"><span>Drag players to explore angles</span></div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const hint   = document.getElementById('hint');
+
+// ── Field constants (metres) ──────────────────────────────────────────────
+const FW        = 55.0;    // pitch width
+const FH        = 50.0;    // displayed length (attacking half)
+const GOAL_W    = 3.66;
+const GOAL_D    = 2.14;
+const CIRCLE_R  = 14.63;
+const PENALTY_Y = 6.4;
+const LINE_23   = 22.9;
+const GK_HW     = 1.0;    // GK effective half-width (m) for shadow calc
+
+// Goal posts (field coords, y=0 = goal line at top)
+const LP = { x: FW/2 - GOAL_W/2, y: 0 };
+const RP = { x: FW/2 + GOAL_W/2, y: 0 };
+
+// ── Layout ────────────────────────────────────────────────────────────────
+let sc = 1;           // px per metre
+let PL = 14, PR = 14; // side padding (px)
+let PT = 32, PB = 12; // top / bottom padding — PT expanded to fit goal depth
+
+// ── State ─────────────────────────────────────────────────────────────────
+const state = {
+  attacker:   { x: 22.5, y: 22.0 },
+  goalkeeper: { x: FW / 2, y: 5.0 },
+};
+let drag      = null;
+let hintGone  = false;
+
+// ── Resize ────────────────────────────────────────────────────────────────
+function resize() {
+  const maxW = Math.min(window.innerWidth - 28, 920);
+  const maxH = window.innerHeight - 158;
+  sc = Math.min((maxW - PL - PR) / FW, (maxH - PT - PB) / FH);
+  PT = Math.max(26, Math.ceil(GOAL_D * sc) + 8);
+  canvas.width  = Math.round(FW * sc) + PL + PR;
+  canvas.height = Math.round(FH * sc) + PT + PB;
+  draw();
+}
+
+// ── Coordinate helpers ────────────────────────────────────────────────────
+const cx = x  => PL + x  * sc;
+const cy = y  => PT + y  * sc;
+const fx = px => (px - PL) / sc;
+const fy = py => (py - PT) / sc;
+
+// ── Maths ─────────────────────────────────────────────────────────────────
+function rayFar(from, through, d = 7000) {
+  const dx = through.x - from.x, dy = through.y - from.y;
+  const l  = Math.hypot(dx, dy);
+  return l < 0.001 ? { ...from } : { x: from.x + dx/l*d, y: from.y + dy/l*d };
+}
+
+function angleDeg(a, o, b) {
+  // Angle (°) at vertex o between directions to a and b
+  const ax = a.x - o.x, ay = a.y - o.y;
+  const bx = b.x - o.x, by = b.y - o.y;
+  const dot = ax*bx + ay*by;
+  const m   = Math.hypot(ax, ay) * Math.hypot(bx, by);
+  return m < 1e-9 ? 0 : Math.acos(Math.max(-1, Math.min(1, dot/m))) * 180 / Math.PI;
+}
+
+// ── Draw ──────────────────────────────────────────────────────────────────
+function draw() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const att  = state.attacker;
+  const gk   = state.goalkeeper;
+
+  // Ball slightly ahead of attacker (stick/ball offset)
+  const ball = { x: att.x + 0.45, y: att.y - 0.65 };
+
+  // Canvas coords for key points
+  const cb  = { x: cx(ball.x), y: cy(ball.y) };
+  const cgk = { x: cx(gk.x),   y: cy(gk.y)   };
+  const clp = { x: cx(LP.x),   y: cy(LP.y)    };
+  const crp = { x: cx(RP.x),   y: cy(RP.y)    };
+
+  // 1. Backgrounds
+  drawBackgrounds(W, H);
+
+  // 2. Red attack-angle triangle (ball → posts)
+  drawAttackTriangle(cb, clp, crp);
+
+  // 3. GK dark coverage shadow (drawn on top of red so it shows what is blocked)
+  drawGKShadow(cb, cgk);
+
+  // 4. Pitch markings (lines/circle drawn over shadows)
+  drawMarkings(W, H);
+
+  // 5. Goal frame
+  drawGoal();
+
+  // 6. Players
+  drawGKFigure(cgk);
+  drawAttackerFigure({ x: cx(att.x), y: cy(att.y) }, cb);
+
+  // 7. Stats
+  updateStats(ball, gk);
+}
+
+// ─ Pitch backgrounds ───────────────────────────────────────────────────────
+function drawBackgrounds(W, H) {
+  // Green surround
+  ctx.fillStyle = '#2a7a30';
+  ctx.fillRect(0, 0, W, H);
+
+  // Blue astroturf
+  ctx.fillStyle = '#1562c0';
+  ctx.fillRect(PL, PT, W - PL - PR, H - PT - PB);
+}
+
+// ─ GK dark shadow cone ────────────────────────────────────────────────────
+function drawGKShadow(cb, cgk) {
+  const dx  = cgk.x - cb.x, dy = cgk.y - cb.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 2) return;
+
+  // Perpendicular unit vector (GK body width axis)
+  const px = -dy / len, py = dx / len;
+  const hw = GK_HW * sc;
+
+  // GK shoulder points in canvas coords
+  const ls   = { x: cgk.x + px * hw, y: cgk.y + py * hw };
+  const rs   = { x: cgk.x - px * hw, y: cgk.y - py * hw };
+
+  // Rays from ball through each shoulder, extended far off-screen
+  const lFar = rayFar(cb, ls);
+  const rFar = rayFar(cb, rs);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(cb.x,   cb.y);
+  ctx.lineTo(ls.x,   ls.y);
+  ctx.lineTo(lFar.x, lFar.y);
+  ctx.lineTo(rFar.x, rFar.y);
+  ctx.lineTo(rs.x,   rs.y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(6, 13, 26, 0.86)';
+  ctx.fill();
+  ctx.restore();
+}
+
+// ─ Red attack angle triangle ──────────────────────────────────────────────
+function drawAttackTriangle(cb, clp, crp) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(cb.x,  cb.y);
+  ctx.lineTo(clp.x, clp.y);
+  ctx.lineTo(crp.x, crp.y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(158, 28, 46, 0.88)';
+  ctx.fill();
+  ctx.restore();
+}
+
+// ─ Pitch markings ─────────────────────────────────────────────────────────
+function drawMarkings(W, H) {
+  ctx.save();
+  const lw = Math.max(1.5, sc * 0.12);
+  ctx.strokeStyle = 'rgba(255,255,255,0.88)';
+  ctx.lineWidth   = lw;
+
+  // Goal line (top)
+  ctx.beginPath();
+  ctx.moveTo(PL,       PT);
+  ctx.lineTo(W - PR,   PT);
+  ctx.stroke();
+
+  // Side lines + bottom
+  ctx.beginPath();
+  ctx.moveTo(PL, PT);        ctx.lineTo(PL, H - PB);
+  ctx.lineTo(W - PR, H - PB); ctx.lineTo(W - PR, PT);
+  ctx.stroke();
+
+  // Shooting / striking circle (lower semi-arc into field)
+  ctx.beginPath();
+  ctx.arc(cx(FW / 2), cy(0), CIRCLE_R * sc, 0, Math.PI);
+  ctx.stroke();
+
+  // 23m line (dashed)
+  const dashA = Math.max(6, sc * 0.55), dashB = Math.max(4, sc * 0.38);
+  ctx.setLineDash([dashA, dashB]);
+  ctx.beginPath();
+  ctx.moveTo(PL,     cy(LINE_23));
+  ctx.lineTo(W - PR, cy(LINE_23));
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Penalty spot
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(cx(FW / 2), cy(PENALTY_Y), Math.max(2.5, sc * 0.13), 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ─ Goal ───────────────────────────────────────────────────────────────────
+function drawGoal() {
+  const gx = cx(LP.x);
+  const gw = GOAL_W * sc;
+  const gd = GOAL_D * sc;
+
+  // Goal interior (above goal line, in green border)
+  ctx.fillStyle = 'rgba(150, 200, 255, 0.14)';
+  ctx.fillRect(gx, PT - gd, gw, gd);
+
+  // Goal frame (posts + crossbar)
+  ctx.save();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth   = Math.max(2.5, sc * 0.20);
+  ctx.lineJoin    = 'round';
+  ctx.beginPath();
+  ctx.moveTo(gx,      PT);
+  ctx.lineTo(gx,      PT - gd);
+  ctx.lineTo(gx + gw, PT - gd);
+  ctx.lineTo(gx + gw, PT);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─ Figures ────────────────────────────────────────────────────────────────
+function drawGKFigure(pos) {
+  const r = Math.max(7, sc * 0.44);
+  ctx.save();
+
+  // Body
+  ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+  ctx.lineWidth   = Math.max(1.5, sc * 0.12);
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y + r);
+  ctx.lineTo(pos.x, pos.y + r * 2.6);
+  ctx.stroke();
+
+  // Head
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+
+  // Label
+  const fs = Math.max(5, Math.round(r * 0.72));
+  ctx.fillStyle = '#1255a0';
+  ctx.font      = `bold ${fs}px sans-serif`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('GK', pos.x, pos.y);
+
+  ctx.restore();
+}
+
+function drawAttackerFigure(pos, ball) {
+  const r = Math.max(7, sc * 0.44);
+  ctx.save();
+
+  // Stick to ball
+  ctx.strokeStyle = 'rgba(255,255,255,0.60)';
+  ctx.lineWidth   = Math.max(1, sc * 0.10);
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pos.x + r * 0.45, pos.y + r * 0.2);
+  ctx.lineTo(ball.x, ball.y);
+  ctx.stroke();
+
+  // Body
+  ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+  ctx.lineWidth   = Math.max(1.5, sc * 0.12);
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y + r);
+  ctx.lineTo(pos.x, pos.y + r * 2.6);
+  ctx.stroke();
+
+  // Head
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+
+  // Ball
+  const br = Math.max(3.5, sc * 0.18);
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, br, 0, Math.PI * 2);
+  ctx.fillStyle   = '#fff';
+  ctx.fill();
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth   = 0.8;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ─ Stats ──────────────────────────────────────────────────────────────────
+function updateStats(ball, gk) {
+  // Total shooting angle (goal posts subtended at ball)
+  const shoot = angleDeg(LP, ball, RP);
+
+  // GK coverage angle (GK body subtended at ball)
+  const dx  = gk.x - ball.x, dy = gk.y - ball.y;
+  const len = Math.hypot(dx, dy);
+  let cover = 0;
+  if (len > 0.02) {
+    const px = -dy / len, py = dx / len;
+    const ls = { x: gk.x + px * GK_HW, y: gk.y + py * GK_HW };
+    const rs = { x: gk.x - px * GK_HW, y: gk.y - py * GK_HW };
+    cover = angleDeg(ls, ball, rs);
+  }
+
+  const open = Math.max(0, shoot - cover);
+
+  document.getElementById('va').textContent = shoot.toFixed(1) + '°';
+  document.getElementById('vb').textContent = cover.toFixed(1) + '°';
+  document.getElementById('vc').textContent = open.toFixed(1)  + '°';
+}
+
+// ── Interaction ───────────────────────────────────────────────────────────
+function canvasXY(e) {
+  const rect = canvas.getBoundingClientRect();
+  const sx   = canvas.width  / rect.width;
+  const sy   = canvas.height / rect.height;
+  const src  = e.touches ? e.touches[0] : e;
+  return {
+    x: (src.clientX - rect.left) * sx,
+    y: (src.clientY - rect.top)  * sy,
+  };
+}
+
+function nearPlayer(cp, radius = 40) {
+  let best = null, bestD = radius;
+  for (const [k, p] of Object.entries(state)) {
+    const d = Math.hypot(cx(p.x) - cp.x, cy(p.y) - cp.y);
+    if (d < bestD) { best = k; bestD = d; }
+  }
+  return best;
+}
+
+function onDown(e) {
+  e.preventDefault();
+  const cp = canvasXY(e);
+  drag = nearPlayer(cp);
+  if (drag) canvas.style.cursor = 'grabbing';
+  if (!hintGone) { hint.classList.add('fade'); hintGone = true; }
+}
+
+function onMove(e) {
+  if (!drag) {
+    // Hover cursor for mouse
+    if (!e.touches) {
+      canvas.style.cursor = nearPlayer(canvasXY(e)) ? 'grab' : 'default';
+    }
+    return;
+  }
+  e.preventDefault();
+  const cp = canvasXY(e);
+  const p  = state[drag];
+  p.x = Math.max(0.3, Math.min(FW - 0.3, fx(cp.x)));
+  p.y = Math.max(0.3, Math.min(FH - 0.3, fy(cp.y)));
+  draw();
+}
+
+function onUp() {
+  drag = null;
+  canvas.style.cursor = 'default';
+}
+
+// Mouse events
+canvas.addEventListener('mousedown',   onDown);
+window.addEventListener('mousemove',   onMove);
+window.addEventListener('mouseup',     onUp);
+
+// Touch events — register touchmove on canvas (touch tracks to originating element)
+canvas.addEventListener('touchstart',  onDown,  { passive: false });
+canvas.addEventListener('touchmove',   onMove,  { passive: false });
+canvas.addEventListener('touchend',    onUp);
+canvas.addEventListener('touchcancel', onUp);
+
+window.addEventListener('resize', resize);
+resize();
+</script>
+</body>
+</html>
